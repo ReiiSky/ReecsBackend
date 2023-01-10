@@ -1,6 +1,11 @@
 import numpy as np
+import re
+import random
 from controllers.Database import conn
 from controllers.IMDBApi import FetchIMDBFilm
+
+def gen_random_numbers_in_range(low, high, n):
+    return random.sample(range(low, high), n)
 
 def LoadNMFDataset():
     cursor = conn.cursor()
@@ -166,6 +171,9 @@ order by
     }
 
 def GetSearchMovie(query = ""):
+    q = """lower(title) like '%"""+query.lower()+"""%'"""
+    if re.match(r'^([\s\d]+)$', query) is not None:
+        q = "f_sorted_id = 1 + "+query
     cursor = conn.cursor()
     cursor.execute("""
 select
@@ -176,14 +184,16 @@ select
   string_to_array(genres, ',') genres,
   ratings
 from
-  films where lower(title) like '%"""+query.lower()+"""%' order by id limit 100;""")
+  films where
+  """+q+"""
+  order by id limit 30;""")
     rows = cursor.fetchall()
 
     cursor.close()
     films = []
     for row in rows:
-        if row[4] is None:
-            updateFilmExternalData(row[0])
+        # if row[4] is None:
+        #     updateFilmExternalData(row[0])
 
         films.append({
             'film_id': row[0],
@@ -199,12 +209,11 @@ from
     }
 
 def GetRandomMovieOnlogin():
-    idx = np.random.randint(193608, size=500) + 1
+    idx = gen_random_numbers_in_range(1, 1632, 200)
 
     films = []
-    for a in idx:
-        cursor = conn.cursor()
-        cursor.execute("""
+    cursor = conn.cursor()
+    cursor.execute("""
     select
     id as film_id,
     image_url,
@@ -212,55 +221,21 @@ def GetRandomMovieOnlogin():
     released_year as release_date,
     string_to_array(genres, ',') genres,
     ratings
-    from films where id > """+str(a)+""" order by film_id limit 1;""", ())
-        rows = cursor.fetchall()
+    from films where f_sorted_id in ("""+",".join([str(a) for a in idx])+""");""", ())
+    rows = cursor.fetchall()
 
-        for row in rows:
-            updateFilmExternalData(row[0])
+    for row in rows:
+        # updateFilmExternalData(row[0])
+        films.append({
+            'film_id': row[0],
+            'image_url': row[1],
+            'title': row[2],
+            'release_date': row[3],
+            'genres': row[4],
+            'rating': {'given': None, 'predict': 3, 'real': mx(row[5])},
+        })
 
-            films.append({
-                'film_id': row[0],
-                'image_url': row[1],
-                'title': row[2],
-                'release_date': row[3],
-                'genres': row[4],
-                'rating': {'given': None, 'predict': 3, 'real': mx(row[5])},
-            })
-        cursor.close()
-
-    return {
-        'recommendations': films,
-    }
-
-def GetRandomMovieOnlogin():
-    idx = np.random.randint(193608, size=201) + 1
-
-    films = []
-    for a in idx:
-        cursor = conn.cursor()
-        cursor.execute("""
-    select
-    id as film_id,
-    image_url,
-    title,
-    released_year as release_date,
-    string_to_array(genres, ',') genres,
-    ratings
-    from films where id > """+str(a)+""" order by film_id limit 1;""", ())
-        rows = cursor.fetchall()
-
-        for row in rows:
-            updateFilmExternalData(row[0])
-
-            films.append({
-                'film_id': row[0],
-                'image_url': row[1],
-                'title': row[2],
-                'release_date': row[3],
-                'genres': row[4],
-                'rating': {'given': None, 'predict': 3, 'real': mx(row[5])},
-            })
-        cursor.close()
+    cursor.close()
 
     return {
         'recommendations': films,
