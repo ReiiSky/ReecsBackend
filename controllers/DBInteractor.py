@@ -139,15 +139,16 @@ def GetRecommendationMovies(userID, limit = 100):
       1
   ) given_rating,
   rec.predicted_ratings,
-  f.description
+  f.description,
+  rec.relevancy
 from
   recommendations rec
   inner join films f on rec.film_id = f.f_sorted_id
 where
   rec.user_id = %s
 order by
-  rec.predicted_ratings desc
-) predicted order by given_rating desc, predicted.predicted_ratings desc limit %s;""", (userID, userID, limit))
+  rec.relevancy desc
+) predicted order by given_rating desc, predicted.relevancy desc limit %s;""", (userID, userID, limit))
     rows = cursor.fetchall()
 
     cursor.close()
@@ -163,12 +164,70 @@ order by
             'release_date': row[3],
             'genres': row[4],
             'rating': {'given': mx(row[6]), 'predict': mx(row[7]), 'real': mx(row[5])},
-            'description': row[8]
+            'description': row[8],
+            'relevancy': row[9],
         })
 
     return {
         'recommendations': films,
     }
+
+def GetUserMovieRelevance(userID):
+    query = """
+    select
+        f.id,
+        f.genres,
+        r.rating
+    from ratings r
+        inner join films f on r.film_id = f.id
+    where r.user_id = """+str(userID)+"""
+    """
+    cursor = conn.cursor()
+    cursor.execute(query)
+
+    rows = cursor.fetchall()
+    cursor.close()
+
+    genres_counter = dict()
+    total_all_genres = 0
+
+    for row in rows:
+        if row[2] < 3:
+            continue
+
+        genres = row[1].split(",")
+
+        for genre in genres:
+            if genre in genres_counter:
+                genres_counter[genre] += 1
+            else:
+                genres_counter[genre] = 1
+
+            total_all_genres += 1
+
+    for key in genres_counter:
+        genres_counter[key] /= total_all_genres
+
+    return genres_counter
+
+def CalculateGenresRelevances(relevances, filmID):
+    cursor = conn.cursor()
+    cursor.execute("select genres from films where f_sorted_id = "+str(filmID))
+
+    rows = cursor.fetchall()
+    cursor.close()
+
+    if len(rows) <= 0:
+        return 0
+
+    genres = rows[0][0].split(',')
+    relevancy = 0
+    
+    for genre in genres:
+        if genre in relevances:
+            relevancy += relevances[genre]
+    
+    return relevancy
 
 def GetSearchMovie(query = ""):
     q = """lower(title) like '%"""+query.lower()+"""%'"""
@@ -330,11 +389,18 @@ def RatingMovieCreated(userID, movieID, rating):
     cursor.close()
 
 def UpdateRecommendation(userID, filmIDs, ratings):
+    relevances = GetUserMovieRelevance(userID)
+
     cursor = conn.cursor()
     for [filmID, rating] in zip(filmIDs, ratings):
+        relevancy = 0
+
+        if rating >= 2.9:
+            relevancy = CalculateGenresRelevances(relevances, filmID + 1)
+
         cursor.execute(
-            'insert into recommendations (user_id, film_id, predicted_ratings) values (%s, %s, %s) on conflict (user_id, film_id) do update set predicted_ratings = %s',
-            (int(userID), int(filmID + 1), float(rating), float(rating)),
+            'insert into recommendations (user_id, film_id, predicted_ratings, relevancy) values (%s, %s, %s, %s) on conflict (user_id, film_id) do update set predicted_ratings = %s, relevancy = %s',
+            (int(userID), int(filmID + 1), float(rating), float(relevancy), float(rating), float(relevancy)),
         )
 
     cursor.close()
