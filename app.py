@@ -2,11 +2,11 @@ import urllib.parse
 from flask import Flask, request, json
 from flask_cors import CORS, cross_origin
 from controllers.UserController import Login, Register
-from controllers.ModelController import Train, Test
 from controllers.MovieController import GetRecommendations, GetMovieDetail, GetRandomMovieForLogin, CreateRating, GetMovieHistories, DeleteMovieHistory
 
 app = Flask(__name__)
-cors = CORS(app)
+CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://localhost"}})
+
 app.config['CORS_HEADERS'] = 'Content-Type'
 
 @app.route('/login', methods=['POST'])
@@ -31,23 +31,6 @@ def LoginHandler():
 def RegisterHandler():
     data = json.loads(request.data)
     response = Register(data)
-
-    status = 200
-
-    if response['status'] != 'ok':
-        status = 400
-
-    return app.response_class(
-        response=json.dumps(response),
-        status=status,
-        mimetype='application/json'
-    )
-
-@app.route('/movies/model/train', methods=['GET'])
-@cross_origin()
-def MoviesModelTrain():
-    percentageOnly = request.headers['Percentage-Only']
-    response = Train(percentageOnly)
 
     status = 200
 
@@ -105,7 +88,7 @@ def GetMovieDetailHandler(id):
         mimetype='application/json'
     )
 
-@app.route('/login/movies', methods=['GET'])
+@app.route('/login/movies')
 @cross_origin()
 def GetLoginMovies():
     status = 200
@@ -160,5 +143,5 @@ def DeleteRating(id):
     )
 
 if __name__ == '__main__':
-    app.debug = False
+    # app.debug = False
     app.run(threaded=True)

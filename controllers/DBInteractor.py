@@ -7,47 +7,6 @@ from controllers.IMDBApi import FetchIMDBFilm
 def gen_random_numbers_in_range(low, high, n):
     return random.sample(range(low, high), n)
 
-def LoadNMFDataset():
-    cursor = conn.cursor()
-
-    cursor.execute(
-    """select 
-	(select id from users order by id desc limit 1) user_count,
-    (select count(*) from films) film_count"""
-    )
-
-    unique_data = cursor.fetchone() 
-
-    unique_user = unique_data[0] + 1
-    unique_film = unique_data[1] + 1
-
-    cursor.execute("select r.user_id, f.f_sorted_id, r.rating from ratings r inner join films f on r.film_id = f.id")
-    ratings_rows = cursor.fetchall()
-
-    user_ids = np.zeros((len(ratings_rows)))
-    movie_ids = np.zeros((len(ratings_rows)))
-    ratings = np.zeros((len(ratings_rows)))
-
-    idx = 0
-    for row in ratings_rows:
-        user_ids[idx] = int(row[0]) - 1
-        movie_ids[idx] = int(row[1]) - 1
-        ratings[idx] = row[2]
-
-        idx += 1
-
-    cursor.close()
-
-    return {
-        'unique_user': unique_user,
-        'unique_film': unique_film,
-        'user_ids': user_ids,
-        'movie_ids': movie_ids,
-        'ratings': ratings,
-        'unique_film_ids': np.unique(movie_ids),
-    }
-
-
 def GetUserByUsername(username):
     cursor = conn.cursor()
 
@@ -59,28 +18,6 @@ def GetUserByUsername(username):
         return {'id': row[0], 'username': row[1], 'password': row[2]}
 
     return None
-
-def GetRealUserIDs():
-    cursor = conn.cursor()
-
-    userIDs = []
-    cursor.execute('select id from users where password is not null')
-    rows = cursor.fetchall()
-
-    for row in rows:
-        userIDs.append(row[0])
-
-    cursor.close()
-    return userIDs
-
-def TrainIDsToFilm(filmLength, userid):
-    userIDs = np.zeros(filmLength, dtype=np.int32)
-    userIDs.fill(userid)
-
-    filmIDs = np.arange(filmLength, dtype=np.int32)
-
-    return [userIDs, filmIDs]
-
 
 def GetListOfUninterestedFilm(userID):
     cursor = conn.cursor()
@@ -141,14 +78,14 @@ def GetRecommendationMovies(userID, limit = 100):
   rec.predicted_ratings,
   f.description,
   rec.relevancy
-from
-  recommendations rec
-  inner join films f on rec.film_id = f.f_sorted_id
-where
-  rec.user_id = %s
-order by
-  rec.relevancy desc
-) predicted order by given_rating desc, predicted.relevancy desc limit %s;""", (userID, userID, limit))
+    from
+    recommendations rec
+    inner join films f on rec.film_id = f.f_sorted_id
+    where
+    rec.user_id = %s
+    order by
+    rec.relevancy desc
+    ) predicted order by given_rating desc, predicted.relevancy desc limit %s;""", (userID, userID, limit))
     rows = cursor.fetchall()
 
     cursor.close()
@@ -172,103 +109,58 @@ order by
         'recommendations': films,
     }
 
-def GetUserMovieRelevance(userID):
-    query = """
-    select
-        f.id,
-        f.genres,
-        r.rating
-    from ratings r
-        inner join films f on r.film_id = f.id
-    where r.user_id = """+str(userID)+"""
-    """
-    cursor = conn.cursor()
-    cursor.execute(query)
-
-    rows = cursor.fetchall()
-    cursor.close()
-
-    genres_counter = dict()
-    total_all_genres = 0
-
-    for row in rows:
-        if row[2] < 3:
-            continue
-
-        genres = row[1].split(",")
-
-        for genre in genres:
-            if genre in genres_counter:
-                genres_counter[genre] += 1
-            else:
-                genres_counter[genre] = 1
-
-            total_all_genres += 1
-
-    for key in genres_counter:
-        genres_counter[key] /= total_all_genres
-
-    return genres_counter
-
-def CalculateGenresRelevances(relevances, filmID):
-    cursor = conn.cursor()
-    cursor.execute("select genres from films where f_sorted_id = "+str(filmID))
-
-    rows = cursor.fetchall()
-    cursor.close()
-
-    if len(rows) <= 0:
-        return 0
-
-    genres = rows[0][0].split(',')
-    relevancy = 0
-    
-    for genre in genres:
-        if genre in relevances:
-            relevancy += relevances[genre]
-    
-    return relevancy
-
 def GetSearchMovie(query = ""):
     q = """lower(title) like '%"""+query.lower()+"""%'"""
     if re.match(r'^([\s\d]+)$', query) is not None:
-        q = "f_sorted_id = 1 + "+query
+        q = "film_id = "+query
     cursor = conn.cursor()
     cursor.execute("""
-select
+    select
   id as film_id,
   image_url,
   title,
   released_year as release_date,
-  string_to_array(genres, ',') genres,
+  genres,
   ratings
-from
+    from
   films where
   """+q+"""
-  order by id limit 30;""")
+  order by id;""")
     rows = cursor.fetchall()
 
     cursor.close()
     films = []
     for row in rows:
-        # if row[4] is None:
-        #     updateFilmExternalData(row[0])
-
         films.append({
             'film_id': row[0],
             'image_url': row[1],
             'title': row[2],
             'release_date': row[3],
             'genres': row[4],
-            'rating': {'given': None, 'predict': 3, 'real': mx(row[5])},
+            'rating': {'given': None, 'predict': None, 'real': mx(row[5])},
         })
 
     return {
         'recommendations': films,
     }
 
+def GetFilmCredits(cursor, creditIDs):
+    credits = []
+    cursor.execute('select id, name from credits where id in ('+', '.join([str(id) for id in creditIDs])+')', ())
+    rows = cursor.fetchall()
+
+    for row in rows:
+        credits.append({
+            'id': row[0],
+            'name': row[1],
+        })
+
+    return credits
+
+
+# Update
 def GetRandomMovieOnlogin():
-    idx = gen_random_numbers_in_range(1, 1632, 200)
+    idx = gen_random_numbers_in_range(0, 3234, 64)
 
     films = []
     cursor = conn.cursor()
@@ -278,20 +170,19 @@ def GetRandomMovieOnlogin():
     image_url,
     title,
     released_year as release_date,
-    string_to_array(genres, ',') genres,
-    ratings
-    from films where f_sorted_id in ("""+",".join([str(a) for a in idx])+""");""", ())
+    genres,
+    (select avg(rating) from ratings where film_id = f.id) ratings
+    from films f where f.id in ("""+",".join([str(a) for a in idx])+""");""", ())
     rows = cursor.fetchall()
 
     for row in rows:
-        # updateFilmExternalData(row[0])
         films.append({
             'film_id': row[0],
             'image_url': row[1],
             'title': row[2],
             'release_date': row[3],
             'genres': row[4],
-            'rating': {'given': None, 'predict': 3, 'real': mx(row[5])},
+            'rating': {'given': None, 'predict': None, 'real': mx(row[5])},
         })
 
     cursor.close()
@@ -303,30 +194,27 @@ def GetRandomMovieOnlogin():
 def GetMoviesDetail(userID, id):
     cursor = conn.cursor()
     cursor.execute("""
-select
-  id as film_id,
-  title,
-  image_url,
-  released_year as release_date,
-  string_to_array(genres, ',') genres,
-  ratings,
-  trailer_url,
-  description,
-  coalesce((select rating from ratings where user_id = """+str(userID)+""" and film_id = f.id limit 1), 0) given_rating,
-  (select predicted_ratings from recommendations where user_id = """+str(userID)+""" and film_id = f.f_sorted_id ) predicted_ratings
-from
-  films f
-  where id = """+str(id))
+    select
+        id as film_id,
+        title,
+        image_url,
+        released_year as release_date,
+        genres,
+        (select avg(rating) from ratings where film_id = f.id) rating,
+        trailer_url,
+        description,
+        coalesce((select rating from ratings where user_id = """+str(userID)+""" and film_id = f.id limit 1), 0) given_rating,
+        (select predicted_ratings from recommendations where user_id = """+str(userID)+"""  and film_id = f.id) predicted_ratings,
+        director_ids, writer_ids, cast_ids
+    from
+        films f
+    where id = """+str(id))
     rows = cursor.fetchall()
 
-    moviesRecs = GetRecommendationMovies(userID, 10)
-
     for row in rows:
-
-        recs = []
-        for rec in moviesRecs['recommendations']:
-            recs.append(rec)
-
+        directors = GetFilmCredits(cursor, row[10])
+        writers   = GetFilmCredits(cursor, row[11])
+        casters   = GetFilmCredits(cursor, row[12])
         return {
             'film_id': row[0],
             'title': row[1],
@@ -336,7 +224,9 @@ from
             'rating': {'given': mx(row[8]), 'predict': mx(row[9]), 'real': mx(row[5])},
             'trailer_url': row[6],
             'description': row[7],
-            'recommendations': recs,
+            'directors': directors,
+            'writers': writers,
+            'casters': casters,
         }
 
     cursor.close()
@@ -389,18 +279,12 @@ def RatingMovieCreated(userID, movieID, rating):
     cursor.close()
 
 def UpdateRecommendation(userID, filmIDs, ratings):
-    relevances = GetUserMovieRelevance(userID)
-
     cursor = conn.cursor()
+
     for [filmID, rating] in zip(filmIDs, ratings):
-        relevancy = 0
-
-        if rating >= 2.9:
-            relevancy = CalculateGenresRelevances(relevances, filmID + 1)
-
         cursor.execute(
-            'insert into recommendations (user_id, film_id, predicted_ratings, relevancy) values (%s, %s, %s, %s) on conflict (user_id, film_id) do update set predicted_ratings = %s, relevancy = %s',
-            (int(userID), int(filmID + 1), float(rating), float(relevancy), float(rating), float(relevancy)),
+            'insert into recommendations (user_id, film_id, predicted_ratings) values (%s, %s, %s, %s) on conflict (user_id, film_id) do update set predicted_ratings = %s',
+            (int(userID), int(filmID), float(rating), float(rating))
         )
 
     cursor.close()
@@ -411,17 +295,17 @@ def GetUserMovieHistories(userID):
 
     cursor.execute("""
     select
-r.film_id,
-f.image_url,
-f.title,
-f.released_year,
-r.rating,
-r.created_at,
-f.genres
-from
-ratings r
-inner join films f on r.film_id = f.id
-where r.user_id = """+str(userID)+" order by r.created_at")
+    r.film_id,
+    f.image_url,
+    f.title,
+    f.released_year,
+    r.rating,
+    r.created_at,
+    f.genres
+    from
+    ratings r
+    inner join films f on r.film_id = f.id
+    where r.user_id = """+str(userID)+" order by r.created_at")
 
     rows = cursor.fetchall()
 
@@ -466,12 +350,85 @@ def DeleteRating(userID, filmID):
     cursor.execute("delete from ratings where user_id = %s and film_id = %s", (userID, filmID))
     cursor.close()
 
-
 def mx (v):
     if v is None:
         return None
 
-    if v >= 5:
+    if v > 5:
         return 5
 
+    v = round(v * 100) / 100
     return v
+
+
+# Training Stuff
+def GetNumberUserNItems():
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        select (
+            select count(id) from users
+        ) user_count,
+        (
+            select count(id) from films
+        ) film_count"""
+    )
+
+    rows = cursor.fetchall()
+    cursor.close()
+
+    return rows[0]
+
+def RatingData():
+    cursor = conn.cursor()
+
+    cursor.execute('select user_id, film_id, rating from ratings order by user_id, film_id');
+    rows = cursor.fetchall()
+
+    cursor.close()
+
+    user_ids = []
+    film_ids = []
+    ratings  = []
+
+    for row in rows:
+        user_ids.append(row[0])
+        film_ids.append(row[1])
+        ratings.append(row[2])
+
+    return user_ids, film_ids, ratings
+
+def RealUserIDs():
+    cursor = conn.cursor()
+
+    cursor.execute('select id from users where password is not null order by id')
+
+    rows = cursor.fetchall()
+    cursor.close()
+
+    return [row[0] for row in rows]
+
+def TrainProgress(message):
+    cursor = conn.cursor()
+    cursor.execute('insert into state (code, message) values (\'train-state\', %s) on conflict (code) do update set message = %s', (message, message))
+    cursor.close()
+
+def GetTrainProgress():
+    cursor = conn.cursor()
+    cursor.execute('select message from state where code = \'train-state\' and message != \'\'')
+
+    rows = cursor.fetchall()
+    cursor.close()
+
+    if len(rows) <= 0:
+        return None
+
+    return rows[0]
+
+def UpdateUserRecommendations(ratings):
+    cursor = conn.cursor()
+
+    for rating in ratings:
+        cursor.execute('insert into recommendations (user_id, film_id, predicted_ratings) values (%s, %s, %s) on conflict (user_id, film_id) do update set predicted_ratings = %s', (rating[0], rating[1], rating[2], rating[2]))
+    
+    cursor.close()
