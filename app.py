@@ -3,9 +3,10 @@ from flask import Flask, request, json
 from flask_cors import CORS, cross_origin
 from controllers.UserController import Login, Register
 from controllers.MovieController import GetRecommendations, GetMovieDetail, GetRandomMovieForLogin, CreateRating, GetMovieHistories, DeleteMovieHistory
+from controllers.ModelController import GetProgressOfTrain
 
 app = Flask(__name__)
-CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://localhost"}})
+CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://127.0.0.1"}})
 
 app.config['CORS_HEADERS'] = 'Content-Type'
 
@@ -60,6 +61,16 @@ def MoviesModelTest():
         mimetype='application/json'
     )
 
+@app.route('/movies/train/progress', methods=['GET'])
+@cross_origin()
+def ProgressTrain():
+    response = GetProgressOfTrain()
+
+    return app.response_class(
+        response=json.dumps(response),
+        status=200,
+        mimetype='application/json'
+    )
 
 @app.route('/movies', methods=['GET'])
 @cross_origin()

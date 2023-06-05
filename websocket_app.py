@@ -1,4 +1,5 @@
 import asyncio
+import json
 import websockets
 from model.NMF import NMF
 from dataset import datasets
@@ -13,14 +14,19 @@ async def handler(websocket, path):
   connections.append(websocket)
 
   while True:
-    data = await websocket.recv()
-    if data == 'retrain':
-      HandleTrain()
-      HandlePredict()
-      await HandleReload()
+    try:
+      data = await websocket.recv()
+      if data == 'retrain':
+        HandleTrain()
+        HandlePredict()
+        await HandleReload()
+        dataset.set_train_state('')
 
-    if data == 'exit':
-      break
+      if data == 'exit':
+        break
+    except:
+      connections.remove(websocket)
+      return
 
   await websocket.close()
   connections.remove(websocket)
@@ -28,14 +34,20 @@ async def handler(websocket, path):
 async def HandleReload():
   global dataset
   for conn in connections:
-    await conn.send('\{"event": "reload"\}')
-
-  dataset.set_train_state('')
+    try:
+      await conn.send('\{"event": "reload"\}')
+    except:
+      pass
 
 def HandleTrainProgress(current, target, loss):
   global dataset
 
-  dataset.set_train_state('\{"event": "train-progress", "current": '+str(current + 1)+', "target": '+str(target)+', "loss": '+str(loss)+'\}')
+  dataset.set_train_state(json.dumps({
+    'event': 'train-progress',
+    'current': current + 1,
+    'target': target,
+    'loss': loss
+  }))
 
 def HandleTrain():
   global model
@@ -48,7 +60,7 @@ def HandleTrain():
     dataset.users(),
     dataset.items(),
     dataset.ratings(),
-    verbose=1,
+    verbose=0,
     epochs=60,
     funcs=[HandleTrainProgress]
   )
@@ -67,8 +79,6 @@ def HandlePredict():
     predictions = model.predict(current_user_id_list, film_ids)
     dataset.set_recommendations(current_user_id_list, film_ids, predictions)
 
-
-
 def initializeModel(num_users, num_items):
   return NMF(num_users, num_items, learning_rate=0.0005)
 
@@ -76,8 +86,10 @@ def main():
   global dataset
 
   dataset = datasets.Dataset()
-  # HandleTrain()
-  # HandlePredict()
+  HandleTrain()
+  HandlePredict()
+
+  dataset.set_train_state('')
 
   port = 5001
   start_server = websockets.serve(handler, 'localhost', port)

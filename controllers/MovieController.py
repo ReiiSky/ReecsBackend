@@ -22,7 +22,7 @@ def GetRandomMovieForLogin():
     return wrap_ok_status(data)
 
 def CreateRating(userID, movieID, data):
-    if int(userID) <= 0 or int(movieID) <= 0 or not data.__contains__('rating'):
+    if int(userID) < 0 or int(movieID) < 0 or not data.__contains__('rating'):
         return wrap_failed_status(None, 'user id, movie id, or rating data not valid')
 
     rating = data['rating']

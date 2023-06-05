@@ -54,46 +54,50 @@ def RegisterUser(username, password, interests, notInterests):
     newUser = {'id': newID}
     return newUser
 
-def GetRecommendationMovies(userID, limit = 100):
+def GetRecommendationMovies(userID, limit = 40):
     cursor = conn.cursor()
-    cursor.execute("""select * from (
-  select
-  f.id as film_id,
-  f.image_url,
-  f.title,
-  f.released_year as release_date,
-  string_to_array(f.genres, ',') genres,
-  f.ratings,
-  (
-    select
-      rating
+    cursor.execute("""select
+    *
     from
-      ratings
-    where
-      user_id = %s
-      and film_id = f.id
-    limit
-      1
-  ) given_rating,
-  rec.predicted_ratings,
-  f.description,
-  rec.relevancy
-    from
-    recommendations rec
-    inner join films f on rec.film_id = f.f_sorted_id
-    where
-    rec.user_id = %s
+    (
+        select
+        f.id as film_id,
+        f.image_url,
+        f.title,
+        f.released_year as release_date,
+        genres,
+        (
+            select
+            avg(rating)
+            from
+            ratings
+            where
+            film_id = f.id
+        ) ratings,
+        (
+            select
+            rating
+            from
+            ratings
+            where
+            user_id = %s
+            and film_id = f.id
+        ) given_rating,
+        rec.predicted_ratings,
+        f.description
+        from
+        recommendations rec
+        inner join films f on rec.film_id = f.id
+        where
+        rec.user_id = %s
+    ) predicted
     order by
-    rec.relevancy desc
-    ) predicted order by given_rating desc, predicted.relevancy desc limit %s;""", (userID, userID, limit))
+    predicted_ratings desc limit %s;""", (userID, userID, limit))
     rows = cursor.fetchall()
 
     cursor.close()
     films = []
     for row in rows:
-        if row[4] is None:
-            updateFilmExternalData(row[0])
-
         films.append({
             'film_id': row[0],
             'image_url': row[1],
@@ -102,7 +106,6 @@ def GetRecommendationMovies(userID, limit = 100):
             'genres': row[4],
             'rating': {'given': mx(row[6]), 'predict': mx(row[7]), 'real': mx(row[5])},
             'description': row[8],
-            'relevancy': row[9],
         })
 
     return {
@@ -331,7 +334,7 @@ def GetMoviesRating():
     cursor = conn.cursor()
     films = {}
 
-    cursor.execute("select f_sorted_id, ratings from films order by f_sorted_id")
+    cursor.execute("select id, ratings from films order by id")
 
     rows = cursor.fetchall()
 
@@ -421,7 +424,7 @@ def GetTrainProgress():
     cursor.close()
 
     if len(rows) <= 0:
-        return None
+        return {}
 
     return rows[0]
 
