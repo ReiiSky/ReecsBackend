@@ -4,12 +4,15 @@ from controllers.DBInteractor import GetNumberUserNItems, RatingData, RealUserID
 
 class Dataset:
   def __init__(self):
-    self._counts = GetNumberUserNItems()
-    self._datasets = RatingData()
-    self._real_user_ids = RealUserIDs()
+    self.reload()
 
   def user_count(self):
     return self._counts[0]
+
+  def reload(self):
+    self._counts = GetNumberUserNItems()
+    self._datasets = RatingData()
+    self._real_user_ids = RealUserIDs()
 
   def item_count(self):
     return self._counts[1]

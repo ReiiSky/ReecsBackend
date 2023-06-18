@@ -91,6 +91,7 @@ def GetRecommendationMovies(userID, limit = 40):
         where
         rec.user_id = %s
     ) predicted
+    where given_rating is null
     order by
     predicted_ratings desc limit %s;""", (userID, userID, limit))
     rows = cursor.fetchall()
@@ -104,7 +105,7 @@ def GetRecommendationMovies(userID, limit = 40):
             'title': row[2],
             'release_date': row[3],
             'genres': row[4],
-            'rating': {'given': mx(row[6]), 'predict': mx(row[7]), 'real': mx(row[5])},
+            'rating': {'predict': mx(row[7], max_rating=6), 'real': mx(row[5])},
             'description': row[8],
         })
 
@@ -124,9 +125,16 @@ def GetSearchMovie(query = ""):
   title,
   released_year as release_date,
   genres,
-  ratings
+  (
+    select
+    avg(rating)
     from
-  films where
+    ratings
+    where
+    film_id = f.id
+  ) ratings
+    from
+  films f where
   """+q+"""
   order by id;""")
     rows = cursor.fetchall()
@@ -353,14 +361,13 @@ def DeleteRating(userID, filmID):
     cursor.execute("delete from ratings where user_id = %s and film_id = %s", (userID, filmID))
     cursor.close()
 
-def mx (v):
+def mx (v, max_rating = 5, length = 100):
     if v is None:
         return None
 
-    if v > 5:
-        return 5
+    v = min(v, max_rating)
 
-    v = round(v * 100) / 100
+    v = round(v * length) / length
     return v
 
 

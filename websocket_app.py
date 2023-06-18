@@ -5,7 +5,6 @@ from model.NMF import NMF
 from dataset import datasets
 import time
 
-
 model = None
 dataset = None
 connections = []
@@ -17,6 +16,7 @@ async def handler(websocket, path):
     try:
       data = await websocket.recv()
       if data == 'retrain':
+        dataset.reload()
         HandleTrain()
         HandlePredict()
         await HandleReload()
@@ -60,8 +60,8 @@ def HandleTrain():
     dataset.users(),
     dataset.items(),
     dataset.ratings(),
-    verbose=0,
-    epochs=60,
+    verbose=1,
+    epochs=20,
     funcs=[HandleTrainProgress]
   )
 
@@ -86,8 +86,8 @@ def main():
   global dataset
 
   dataset = datasets.Dataset()
-  HandleTrain()
-  HandlePredict()
+  # HandleTrain()
+  # HandlePredict()
 
   dataset.set_train_state('')
 
