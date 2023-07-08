@@ -78,7 +78,8 @@ def GetRecommendationsHandler():
     status = 200 
     query = urllib.parse.unquote(request.query_string)
     userID = int(request.headers['User-Id'])
-    recommendations = GetRecommendations(userID, query)
+    isRecommended = request.headers['Is-Recommended'] == 'true'
+    recommendations = GetRecommendations(userID, query, isRecommended)
 
     return app.response_class(
         response=json.dumps(recommendations),

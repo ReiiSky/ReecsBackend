@@ -1,15 +1,15 @@
 from controllers.Wrapper import wrap_ok_status, wrap_failed_status
-from controllers.DBInteractor import GetRecommendationMovies, GetMoviesDetail, GetRandomMovieOnlogin, RatingMovieCreated, GetUserMovieHistories, DeleteRating, GetSearchMovie
+from controllers.DBInteractor import GetRecommendationMovies, GetMoviesDetail, GetRandomMovieOnlogin, RatingMovieCreated, GetUserMovieHistories, DeleteRating, GetSearchMovie, GetUserRelevancy, GetMovieByGenreRelevancy
 
-def GetRecommendations(userID, titleQuery):
-    data = []
+def GetRecommendations(userID, titleQuery, isRecommended = False):
+    if not isRecommended:
+        user_relevancy = GetUserRelevancy(userID)
+        return wrap_ok_status(GetMovieByGenreRelevancy(userID, user_relevancy))
 
     if len(titleQuery) == 0:
-        data = GetRecommendationMovies(userID)
-    else:
-        data = GetSearchMovie(titleQuery)
+        return wrap_ok_status(GetRecommendationMovies(userID))
 
-    return wrap_ok_status(data)
+    return wrap_ok_status(GetSearchMovie(titleQuery))
 
 def GetMovieDetail(userID, id):
     data = GetMoviesDetail(userID, id)

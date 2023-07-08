@@ -4,6 +4,12 @@ import random
 from controllers.Database import conn
 from controllers.IMDBApi import FetchIMDBFilm
 
+def jaccard(user_rev, film_genre):
+    user = set(user_rev)
+    film = set(film_genre)
+
+    return len(user.intersection(film)) / len(user.union(film))
+
 def gen_random_numbers_in_range(low, high, n):
     return random.sample(range(low, high), n)
 
@@ -335,8 +341,88 @@ def GetUserMovieHistories(userID):
         })
 
     cursor.close()
-
     return histories
+
+def GetUserRelevancy(user_id):
+    histories = GetUserMovieHistories(user_id)
+    relevancies = []
+
+    for history in histories:
+        user_genres = history['genres']
+        for genre in user_genres:
+            if genre not in relevancies:
+                relevancies.append(genre)
+
+    return relevancies
+
+def GetMovieByGenreRelevancy(user_id, user_relevancy, limit=40):
+    film_ids = getAllMovieWithoutRating(user_id, user_relevancy)[:limit]
+    cursor = conn.cursor()
+    film_ids_str = [str(id) for id in film_ids]
+    cursor.execute(" select id, image_url, title, released_year, genres, (select avg(rating) from ratings where film_id = id) ratings, description from films where id in ("+", ".join(film_ids_str)+") ")
+    rows = cursor.fetchall()
+
+    cursor.close()
+    films = []
+    for row in rows:
+        films.append({
+            'film_id': row[0],
+            'image_url': row[1],
+            'title': row[2],
+            'release_date': row[3],
+            'genres': row[4],
+            'rating': {'predict': None, 'real': mx(row[5])},
+            'description': row[6],
+        })
+
+    return {
+        'recommendations': films,
+    }
+
+def getAllMovieWithoutRating(user_id, user_relevancy):
+    cursor = conn.cursor()
+    histories = []
+
+    cursor.execute("""
+    select
+  id,
+  genres
+from
+  films
+where
+  id not in(
+    select
+      film_id
+    from
+      ratings
+    where
+      user_id = """+str(user_id)+"""
+  )
+order by
+  id desc;""")
+
+    rows = cursor.fetchall()
+
+    if len(rows) <= 0:
+        return
+
+    films = []
+
+    for row in rows:
+        films.append({
+            'id': row[0],
+            'genre': row[1],
+        })
+    
+    film_id_relv = []
+
+    for film in films:
+        film_id_relv.append((film['id'], jaccard(user_relevancy, film['genre'])))
+
+    film_id_relv.sort(key=lambda x: x[1], reverse=True)
+
+    film_ids = [film_id[0] for film_id in film_id_relv]
+    return film_ids
 
 def GetMoviesRating():
     cursor = conn.cursor()

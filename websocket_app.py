@@ -61,7 +61,7 @@ def HandleTrain():
     dataset.items(),
     dataset.ratings(),
     verbose=1,
-    epochs=20,
+    epochs=5,
     funcs=[HandleTrainProgress]
   )
 
