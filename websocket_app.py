@@ -92,7 +92,7 @@ def main():
   dataset.set_train_state('')
 
   port = 5001
-  start_server = websockets.serve(handler, 'localhost', port)
+  start_server = websockets.serve(handler, '0.0.0.0', port)
 
   print('Server running on: '+str(port))
   loop = asyncio.get_event_loop()
